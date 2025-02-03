@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        .container {
+            margin-top: 1em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 90vh; /* Use 100vh to make the container take up the full height of the viewport */
+            position: relative; /* Add position relative for button positioning */
+        }
+
+        .viewport {
+            display: inline-block;
+            position: relative;
+            max-height: 100%; /* Limit the height of the viewport to 100% of its parent container */
+        }
+
+        video, canvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        #canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .viewport > #video {
+            display: block;
+        }
+
+        .button-container {
+            position: absolute;
+            bottom: 10px; /* Adjust as needed */
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+        }
+
+        .zoom-button-container {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            text-align: center;
+        }
+
+        .button {
+            background: rgba(255, 255, 255, 0.2); /* Transparent background */
+            border: 2px solid #fff; /* White border */
+            color: #fff; /* White text */
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .button.zoom {
+            padding: 5px 10px; /* Diminuir padding para botões menores */
+            font-size: 14px; /* Diminuir tamanho da fonte */
+            margin: 5px;
+            width: 30px; /* Largura fixa para botões */
+            height: 30px; /* Altura fixa para botões */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .button.switch {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+
+        .button:hover {
+            background: rgba(255, 255, 255, 0.5); /* Slightly more opaque on hover */
+        }
+    </style>
+</head>
+<body>
+  	<audio id="beep" src="./beep-07a.mp3"></audio>
+    <div class="container">
+        <div class="viewport">
+            <canvas id="canvas"></canvas>
+            <video id="video" muted autoplay playsinline></video>
+        </div>
+        <div id="timing">
+            <span id="usingOffscreenCanvas"></span><br>
+        </div>
+        <div class="button-container">
+            <button class="button switch" onclick="switchCamera()">Mudar Camera</button>
+        </div>
+        <div class="zoom-button-container">
+            <button class="button zoom" onclick="zoomIn()">+</button>
+            <button class="button zoom" onclick="zoomOut()">-</button>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
+    <script>
+        const el = {},
+            usingOffscreenCanvas = isOffscreenCanvasWorking();
+        let lastResultText = ''; // Variável para armazenar o último valor de resultText
+        let currentStream;
+        let currentFacingMode = 'environment';
+        let currentZoom = 1; // Variável para armazenar o nível de zoom atual
+
+        document
+            .querySelectorAll('[id]')
+            .forEach(element => el[element.id] = element)
+      
+      	// Adiciona a referência ao elemento de áudio
+		const beepSound = document.getElementById('beep');
+
+        let offCanvas,
+            requestId = null;
+
+        function isOffscreenCanvasWorking() {
+            try {
+                return Boolean((new OffscreenCanvas(1, 1)).getContext('2d'))
+            } catch {
+                return false;
+            }
+        }
+
+        function formatNumber(number, fractionDigits = 1) {
+            return number.toLocaleString(
+                undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits }
+            )
+        }
+
+        function detect(source) {
+            const afterFunctionCalled = performance.now(),
+                canvas = el.canvas,
+                ctx = canvas.getContext('2d');
+
+            function getOffCtx2d(width, height) {
+                if (usingOffscreenCanvas) {
+                    if (!offCanvas || (offCanvas.width !== width) || (offCanvas.height !== height)) {
+                        // Only resizing the canvas caused Chromium to become progressively slower
+                        offCanvas = new OffscreenCanvas(width, height)
+                    }
+                    return offCanvas.getContext('2d');
+                }
+            }
+
+            canvas.width = source.naturalWidth || source.videoWidth || source.width;
+            canvas.height = source.naturalHeight || source.videoHeight || source.height;
+
+            if (canvas.height && canvas.width) {
+                const offCtx = getOffCtx2d(canvas.width, canvas.height) || ctx;
+                offCtx.drawImage(source, 0, 0);
+
+                const afterDrawImage = performance.now(),
+                    imageData = offCtx.getImageData(0, 0, canvas.width, canvas.height),
+                    afterGetImageData = performance.now();
+
+                return zbarWasm.scanImageData(imageData)
+                    .then(symbols => {
+                        const afterScanImageData = performance.now();
+
+                        symbols.forEach(symbol => {
+                            const lastPoint = symbol.points[symbol.points.length - 1];
+                            ctx.moveTo(lastPoint.x, lastPoint.y);
+                            symbol.points.forEach(point => ctx.lineTo(point.x, point.y));
+
+                            ctx.lineWidth = Math.max(Math.min(canvas.height, canvas.width) / 100, 1);
+                            ctx.strokeStyle = '#00e00060';
+                            ctx.stroke();
+                        });
+
+                        symbols.forEach(s => s.rawValue = s.decode("utf-8"));
+
+                        const resultText = JSON.stringify(symbols.map(m => m.rawValue).join(), null, 2);
+
+                        // Enviar mensagem para a página pai apenas se o resultText mudar e não for vazio
+                        if (resultText !== lastResultText && resultText !== '""') {
+                            window.parent.postMessage(resultText, '*');
+                            lastResultText = resultText; // Atualizar o último valor
+                          
+                          	// Tocar o som de bip
+                    		beepSound.play();
+                        }
+                    });
+
+            } else {
+                return Promise.resolve();
+            }
+        }
+
+        function detectVideo(active) {
+            if (active) {
+                detect(el.video)
+                    .then(() => requestId = requestAnimationFrame(() => detectVideo(true)));
+
+            } else {
+                cancelAnimationFrame(requestId);
+                requestId = null;
+            }
+        }
+
+        function start(facingMode = 'environment') {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facingMode, zoom: currentZoom } })
+                .then(stream => {
+                    currentStream = stream;
+                    el.video.srcObject = stream;
+                    detectVideo(true);
+              		zoomIn();
+                })
+                .catch(error => {
+                    console.error(error);
+                });
+        }
+
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            start(currentFacingMode);
+        }
+
+        function setZoom(zoom) {
+            currentZoom = zoom;
+            if (currentStream) {
+                const [track] = currentStream.getVideoTracks();
+                const capabilities = track.getCapabilities();
+                if (capabilities.zoom) {
+                    const settings = track.getSettings();
+                    const constraints = {
+                        advanced: [{ zoom: zoom }]
+                    };
+                    track.applyConstraints(constraints);
+                }
+            }
+        }
+
+        function zoomIn() {
+            if (currentStream) {
+                const [track] = currentStream.getVideoTracks();
+                const capabilities = track.getCapabilities();
+                if (capabilities.zoom) {
+                    currentZoom = Math.min(capabilities.zoom.max, currentZoom + 1);
+                    setZoom(currentZoom);
+                }
+            }
+        }
+
+        function zoomOut() {
+            if (currentStream) {
+                const [track] = currentStream.getVideoTracks();
+                const capabilities = track.getCapabilities();
+                if (capabilities.zoom) {
+                    currentZoom = Math.max(capabilities.zoom.min, currentZoom - 1);
+                    setZoom(currentZoom);
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', (event) => {
+            start();
+        });
+    </script>
+</body>
+</html>
