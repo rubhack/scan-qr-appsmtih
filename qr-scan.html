@@ -10,14 +10,14 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 90vh; /* Use 100vh to make the container take up the full height of the viewport */
-            position: relative; /* Add position relative for button positioning */
+            height: 90vh; 
+            position: relative; 
         }
 
         .viewport {
             display: inline-block;
             position: relative;
-            max-height: 100%; /* Limit the height of the viewport to 100% of its parent container */
+            max-height: 100%; 
         }
 
         video, canvas {
@@ -39,7 +39,7 @@
 
         .button-container {
             position: absolute;
-            bottom: 10px; /* Adjust as needed */
+            bottom: 10px; 
             left: 50%;
             transform: translateX(-50%);
             text-align: center;
@@ -78,7 +78,7 @@
         }
 
         .button:hover {
-            background: rgba(255, 255, 255, 0.5); /* Slightly more opaque on hover */
+            background: rgba(255, 255, 255, 0.5); 
         }
     </style>
 </head>
@@ -104,16 +104,15 @@
     <script>
         const el = {},
             usingOffscreenCanvas = isOffscreenCanvasWorking();
-        let lastResultText = ''; // Variável para armazenar o último valor de resultText
+        let lastResultText = ''; 
         let currentStream;
         let currentFacingMode = 'environment';
-        let currentZoom = 1; // Variável para armazenar o nível de zoom atual
+        let currentZoom = 1; 
 
         document
             .querySelectorAll('[id]')
             .forEach(element => el[element.id] = element)
       
-      	// Adiciona a referência ao elemento de áudio
 		const beepSound = document.getElementById('beep');
 
         let offCanvas,
@@ -177,12 +176,10 @@
 
                         const resultText = JSON.stringify(symbols.map(m => m.rawValue).join(), null, 2);
 
-                        // Enviar mensagem para a página pai apenas se o resultText mudar e não for vazio
                         if (resultText !== lastResultText && resultText !== '""') {
                             window.parent.postMessage(resultText, '*');
-                            lastResultText = resultText; // Atualizar o último valor
+                            lastResultText = resultText; 
                           
-                          	// Tocar o som de bip
                     		beepSound.play();
                         }
                     });
